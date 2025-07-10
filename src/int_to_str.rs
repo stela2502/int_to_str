@@ -507,6 +507,12 @@ impl IntToStr {
 		self.into_u32()
 	}
 
+	/// simply get the the first 32 bp as u64
+	pub fn str_to_u64( &mut self, input:&str ) -> u64 {
+		self.regenerate_from_slice(input.as_bytes());
+		self.into_u64()
+	}
+
 
 	/// regenerate the encoded from the storage
 	/// this can be used to re-gain lost sequences
