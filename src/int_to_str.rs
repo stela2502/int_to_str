@@ -337,7 +337,7 @@ impl IntToStr {
 		data
 	}
 
-	fn u8_array_to_str( u8_encoded: &[u8] ) ->String {
+	pub fn u8_array_to_str( u8_encoded: &[u8] ) ->String {
 		let mut data = String::default();
 		for u8_4bp in u8_encoded.iter(){
 			Self::u8_to_str(  u8_4bp, &mut data );
