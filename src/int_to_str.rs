@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fmt;
 //use crate::errors::SeqError;
 //use crate::traits::BinaryMatcher;
 
@@ -24,6 +25,64 @@ pub struct IntToStr {
 
 }
 
+use std::mem::size_of;
+
+
+macro_rules! impl_to_le_bytes {
+    ($($t:ty),*) => {
+        $(impl ToLeBytes for $t {
+            fn to_le_byte_vec(&self) -> Vec<u8> {
+                self.to_le_bytes().to_vec()
+            }
+        })*
+    };
+}
+
+impl_to_le_bytes!(u8, u16, u32, u64, u128);
+
+impl fmt::Display for IntToStr {
+
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+
+    	// Helper: format u64 or usize into grouped binary string
+        fn to_bin_grouped<T: Into<u64>>(num: T, bits: usize) -> String {
+            let raw = format!("{:0width$b}", num.into(), width = bits);
+            raw.chars()
+                .collect::<Vec<_>>()
+                .chunks(4)
+                .map(|chunk| chunk.iter().collect::<String>())
+                .collect::<Vec<_>>()
+                .join("_")
+        }
+
+        // Helper: format u8 vector as binary
+        fn vec_to_bin(vec: &Vec<u8>) -> Vec<String> {
+            vec.iter()
+                .map(|b| format!("0b{}", to_bin_grouped(*b, 8)))
+                .collect()
+        }
+
+        let dna_str = match std::str::from_utf8(&self.long_term_storage) {
+            Ok(s) => s,
+            Err(_) => "<invalid UTF-8>",
+        };
+
+        writeln!(f, "IntToStr {{")?;
+        writeln!(f, "  long_term_storage: {:?},", self.long_term_storage)?;
+ 		writeln!(f, "  long_term_storage (DNA): \"{}\",", dna_str)?;
+        writeln!(f, "  storage: {:?},", self.storage)?;
+        writeln!(f, "  u8_encoded: {},", vec_to_bin(&self.u8_encoded).join(", "))?;
+        writeln!(f, "  lost: {},", self.lost)?;
+        writeln!(f, "  shifted: {},", self.shifted)?;
+        writeln!(f, "  kmer_size: {},", self.kmer_size)?;
+        writeln!(f, "  step_size: {},", self.step_size)?;
+        writeln!(f, "  checker: {:?},", self.checker)?;
+        writeln!(f, "  mask: 0x{},", to_bin_grouped(self.mask, 64))?; // hex for clarity
+        writeln!(f, "  current_position: {}", self.current_position)?;
+        write!(f, "}}")
+    }
+}
+
 // Implement the Index trait for MyClass
 use std::ops::Index;
 
@@ -42,7 +101,7 @@ impl PartialEq<Vec<u8>> for IntToStr {
     }
 }
 
-
+/*
 impl Iterator for IntToStr {
     type Item = (u16, u64);
 
@@ -77,43 +136,62 @@ impl Iterator for IntToStr {
         }
     }
 }
-
+*/
 /// Here I have my accessorie functions that more or less any of the classes would have use of.
 /// I possibly learn a better way to have them...
 impl IntToStr {
 
-	pub fn new(seq:Vec::<u8>, kmer_size:usize) -> Result<Self, String>{
+	pub fn new(seq: &[u8] ) -> Self {
 		// 4 of the array u8 fit into one result u8
 		//eprintln!("Somtimes I die?! -> processed seq: {:?}", seq);
+		fn encode_binary( c: u8) -> Result<Base, String> {
+	    	// might have to play some tricks for lookup in a const
+	    	// array at some point
+	    	match c {
+	        	b'A' | b'a' => Ok(A),
+	        	b'C' | b'c' => Ok(C),
+		        b'G' | b'g' => Ok(G),
+	        	b'T' | b't' => Ok(T),
+	        	b'N' | b'n' => Ok(A), // this is necessary as we can not even load a N containing sequence
+		        _ => Err("cannot encode {c} into 2 bit encoding".to_string()),
+	    	}
+		}
+
 		let storage:Vec::<u8> = seq.to_vec();
 		let long_term_storage = seq.to_vec();
 
-		let u8_encoded = Vec::<u8>::with_capacity( storage.len()/4 +1);
+		let num_bytes =(storage.len()+3)/4;
+		let mut u8_encoded = Vec::<u8>::with_capacity( num_bytes );
+		for id in 0..num_bytes {
+			u8_encoded.push( 0_u8 );
+			for add in (0..4).rev(){
+				let current_utf8_id = id*4 + add;
+				u8_encoded[id] <<=2;
+				if seq.len() > current_utf8_id {
+					u8_encoded[id] |= match encode_binary(seq[current_utf8_id]){
+						Ok(bits) => bits,
+						Err(e) => panic!("Char at seq[{current_utf8_id}] ({}) is not a supported nucleotoide",seq[current_utf8_id] )
+					};
+				} // this automatically "stuffs" the last byte with zeros's
+			}
+		}
 		let lost = 0;
 		let shifted = 0;
 		let checker = BTreeMap::<u8, usize>::new();
-		let size = match kmer_size >= 31 {
-		    true => kmer_size,
-		    false => 31,
-		};
-		let mask = !0u64 >> ( (32 - size )  * 2) as u32;
 		//let mask: u64 = (1 << (2 * kmer_size)) - 1;
 
-		let mut ret = Self{
+		Self{
             long_term_storage,
 			storage,
 			u8_encoded,
 			lost,
 			shifted,
-			kmer_size,
+			kmer_size:16, //deprecated
 			checker,
-			mask,
+			mask: 0, // useless
 			current_position:0,
 			step_size:1,
-		};
-
-		ret.regenerate()?;
-		Ok(ret)
+		}
 	}
 
 	pub fn step_size( &mut self, size:usize ) {
@@ -127,119 +205,6 @@ impl IntToStr {
 			self.step_size = size;
 		}
 	}
-
-    // pub fn iter(&mut self) -> SeqIterator {
-    //     SeqIterator {
-    //         my_class: self,
-    //     }
-    // }
-
-    /// returns true if the sequence passes, false if there is a problem like N nucleotides
-    /// or too low sequences variability in the first 8bp
-    /// or None if the sequence is at it's end.
-   /* fn seq_ok(&mut self, short:bool ) -> Result<(u16, SecondSeq), SeqError > {
-
-        let start = self.lost * 4;
-		let to = start + 8;
-
-        self.checker.clear();
-
-        if self.storage.len() < to{
-        	//println!("not enough data!");
-            return Err(SeqError::End)
-        }
-
-        // check the initial 8 bp as they will create a key
-        for nuc in &self.storage[start..to ] {
-            match self.checker.get_mut( nuc ){
-                Some( count ) => *count += 1,
-                None => {
-                    if self.checker.insert( *nuc, 1).is_some(){};
-                }
-            };
-            if *nuc ==b'N'{
-            	//println!("N nucleotoides!");
-                return Err(SeqError::Ns);
-            }
-        }
-
-        let short_seq = SecondSeq(self.into_u64_nbp( 8 ), 8_u8);
-
-   		let dnt_s = short_seq.di_nuc_tab();
-   		let max_s = dnt_s.iter().max().unwrap_or(&0);
-   		// 6 or 7 means two of the 8 nucl were not the same
-   		if max_s > &5_i8 {
-   			return Err(SeqError::LowComplexity)
-   		}
-   		if short {
-   			return Ok( (short_seq.0 as u16, SecondSeq( 0_u64, 32_u8)) )
-   		}
-
-        match self.dropped_n(2){// shift 8 bp
-        	Some(_) => {},
-        	None => {
-        		return Err(SeqError::End);
-        	}
-        };
-        let mut sign:u8 = self.kmer_size.try_into().unwrap();
-        
-        // do we have some sequence left to create a SecondSeq object from?
-        // And if how much?
-		if self.shifted + self.lost *4 + self.kmer_size > self.storage.len(){
-			let missing = (self.shifted + self.lost *4 + self.kmer_size )- self.storage.len() ;
-			if missing >= self.kmer_size{
-				return Err(SeqError::End)
-			}
-        	sign = (self.kmer_size - missing).try_into().unwrap();
-        }
-        let long_seq = SecondSeq( self.into_u64_nbp( self.kmer_size ), sign);
-        let dnt_l = long_seq.di_nuc_tab();
-   		let max_l = dnt_l.iter().max().unwrap_or(&0);
-   		// 6 or 7 means two of the 8 nucl were not the same
-   		if *max_l as u8 > ( sign - 5_u8) {
-   			return Err(SeqError::LowComplexity)
-   		}
-
-        return Ok( (short_seq.0 as u16, long_seq) )
-
-    }
-
-
-	pub fn next_small(&mut self) -> Option<(u16, SecondSeq)> {
-
-    	//println!("Start with next");
-
-    	match self.seq_ok( true ){ // only small!
-    		Ok((short,second) ) => {
-    			Some((short,second))
-    		},
-    		Err( SeqError::End ) => {
-    			if self.shifted < 15{
-    				match self.shift(){
-    					Some(_) => {
-    						self.next_small()
-    					},
-    					None => { None },
-    				}
-    			}else {
-    				None
-    			}
-    		},
-    		Err(_)=>{
-    			//SeqError::Ns or SeqError::LowComplexity
-    			self.next_small()
-    		},
-    	}
-    }
-    */
-
-    pub fn print_second_seq (&self, first:u16, second_seq: u64 ){
-    	let mut small_seq :String = Default::default();
-        let mut large_seq: String = Default::default();
-        self.u16_to_str( 8, &first, &mut small_seq);
-        self.u64_to_str( second_seq as usize, &second_seq, &mut large_seq);
-        eprintln!("seq  {}-{} or {:?}-{:?}", &first, &second_seq, small_seq, large_seq);
-    }
 
 
     // This function retures a Option<( u16, SecondSeq )> - an enhanced u16 and an enhanced u64
@@ -310,55 +275,112 @@ impl IntToStr {
 	pub fn len(&self) -> usize{
 		self.u8_encoded.len()
 	}
+	
+	fn reverse_bits_in_byte( b: u8) -> u8 {
+		let mut b = b;
+	    b = (b >> 4) | (b << 4);
+	    b = ((b & 0b1100_1100) >> 2) | ((b & 0b0011_0011) << 2);
+	    b = ((b & 0b1010_1010) >> 1) | ((b & 0b0101_0101) << 1);
+	    b
+	}
 
+	///helper function for crating the unsigned intergers from the internal u8 array.
+    fn into_uint<T, const N: usize>(
+	    encoded: &[u8],
+	    reverse_bits: bool,
+	) -> T
+	where
+	    T: Default
+	        + From<u8>
+	        + std::ops::Shl<u8, Output = T>
+	        + std::ops::BitOr<Output = T>,
+	{
+	    let mut ret = T::default();
+
+	    for i in (0..N).rev() {
+	        let mut byte = encoded.get(i).copied().unwrap_or(0);
+	        if reverse_bits {
+	            byte = Self::reverse_bits_in_byte(byte);
+	        }
+
+	        ret = (ret << 8) | T::from(byte);
+	    }
+
+	    ret
+	}
 	/// this is needed for the initial mappers
 	/// takes the self encoded seqences and converts the last entries into one u16
 	pub fn into_u16(&self ) -> u16{
-
-		let mut ret: u16 = 0;
-
-    	//for i in self.len()-1..=self.len()-2 {
-    	for i in (0..2).rev(){
-	        ret = (ret << 8) | self.u8_encoded.get(i).copied().unwrap_or(0) as u16;
-    	}
-
-    	ret
+		Self::into_uint::<u16, 2>(&self.u8_encoded, false)
 	}	
 	/// this is needed for completing the set
 	pub fn into_u32(&self ) -> u32{
-
-		let mut ret: u32 = 0;
-    	//for i in self.len()-1..=self.len()-4 {
-    	for i in (0..4).rev(){
-    		ret = (ret << 8) | self.u8_encoded.get(i).copied().unwrap_or(0) as u32;
-    	}
-
-    	ret
+		Self::into_uint::<u32, 4>(&self.u8_encoded, false)
 	}
 	/// needed for the secondary mappings
     /// takes the UTF8 encoded sequence and encodes the first 32 into a u64 
 	pub fn into_u64(&self ) -> u64{
-
-		let mut ret: u64 = 0;
-    	//for i in self.len()-1..=self.len()-8{
-    	for i in (0..8).rev(){
-	        ret = (ret << 8) | self.u8_encoded.get( i ).copied().unwrap_or(0) as u64;
-    	}
-
-    	ret
+		Self::into_uint::<u64, 8>(&self.u8_encoded, false)
 	}
 	/// this is needed for completing the set
 	pub fn into_u128(&self ) -> u128{
-
-		let mut ret: u128 = 0;
-    	//for i in self.len()-1..=self.len()-16 {
-    	for i in (0..16).rev(){
-	        ret = (ret << 8) | self.u8_encoded.get(i).copied().unwrap_or(0) as u128;
-    	}
-
-    	ret
+		Self::into_uint::<u128, 16>(&self.u8_encoded, false)
 	}
 
+
+	/// reverse into_uint - create the internal structure from the numbers
+	fn from_uint<T, const N: usize>(mut value: T, reverse_bits: bool) -> Self
+	where
+	    T: Copy + ToLeBytes
+	        + std::ops::Shr<u8, Output = T>
+	        + std::ops::BitAnd<Output = T>
+	        + From<u8>
+	        + Into<u128>, // For size handling
+	{
+		let bytes = value.to_le_byte_vec();
+
+		// Ensure we have exactly N bytes, padding with 0s if needed
+	    let mut buf = vec![0u8; N];
+	    for (i, b) in bytes.iter().enumerate().take(N) {
+	        buf[i] = *b;
+	    }
+
+	    if reverse_bits {
+	        for b in &mut buf {
+	            *b = Self::reverse_bits_in_byte(*b);
+	        }
+	    }
+		let utf8 = Self::u8_array_to_str(&bytes);
+
+	    IntToStr{
+	    	u8_encoded: buf,
+	    	storage: utf8.clone().into_bytes(), 
+			long_term_storage: utf8.into_bytes(),
+			lost: 0,
+			shifted: 0,
+			kmer_size: 16,
+			step_size: 3,
+			checker: BTreeMap::new(),
+			mask: 0_u64,
+			current_position: 0,
+	    }
+	}
+	
+	pub fn from_u16(val: u16) -> Self {
+	    Self::from_uint::<u16, 2>(val, false)
+	}
+
+	pub fn from_u32(val: u32) -> Self {
+	    Self::from_uint::<u32, 4>(val, false)
+	}
+
+	pub fn from_u64(val: u64) -> Self {
+	    Self::from_uint::<u64, 8>(val, false)
+	}
+
+	pub fn from_u128(val: u128) -> Self {
+	    Self::from_uint::<u128, 16>(val, false)
+	}
 
     /// needed for the secundary mappings
     /// takes the UTF8 encoded sequence and encodes the first kmer_len into a u64 
@@ -400,18 +422,7 @@ impl IntToStr {
     }
 
 
-	pub fn encode_binary( &self, c: u8) -> Result<Base, String> {
-    	// might have to play some tricks for lookup in a const
-    	// array at some point
-    	match c {
-        	b'A' | b'a' => Ok(A),
-        	b'C' | b'c' => Ok(C),
-	        b'G' | b'g' => Ok(G),
-        	b'T' | b't' => Ok(T),
-        	b'N' | b'n' => Ok(A), // this is necessary as we can not even load a N containing sequence
-	        _ => Err("cannot encode {c} into 2 bit encoding".to_string()),
-    	}
-	}
+
 
 	/// drop the last n u8 2 bit encoded sequences (n=1 => 4bp dropped from encoded)
 	/// this can be reset using the self.reset() function.
@@ -435,177 +446,32 @@ impl IntToStr {
 	/// shift the underlying sequence by 1 (frameshift)
 	/// can be regenrated using deep_refresh().
 	pub fn shift(&mut self )-> Option<()> {
-		if self.storage.len() > 1{
-			let tmp = self.shifted +1;
-			self.storage.remove(0);
-			let _ = self.regenerate();
-			self.shifted = tmp;
-		}
-		else {
-			eprintln!("My sequence is to short to be shifted!");
-			return None;
-		}
-		Some(())
+		panic!("This functionallyit has been removed!");
 	}
-
-
-	/// regenerates the complete object with a new Vec::<u8> utf8 encoded
-	pub fn from_vec_u8( &mut self, array:Vec::<u8> )-> Result<(),String> {
-		// 4 of the array u8 fit into one result u8
-		self.storage = array.to_vec();
-		self.long_term_storage = array.to_vec();
-		self.current_position=0;
-		self.regenerate()
-	}
-
-	/// regenerate from the long_term_storage
-	pub fn deep_refresh(&mut self )-> Result<(),String>{
-		self.storage = self.long_term_storage.to_vec();
-		self.regenerate()
-	}
-
-	/// speed the regeneration up:
-	pub fn regenerate_from_slice(&mut self, input: &[u8]) -> Result<(), String> {
-	    let mut padded_len = input.len();
-	    let remainder = padded_len % 4;
-	    if remainder != 0 {
-	        padded_len += 4 - remainder;
-	    }
-
-	    let mut ret = Vec::with_capacity(padded_len / 4);
-
-	    for chunk_start in (0..padded_len).step_by(4) {
-	        let mut value: u8 = 0;
-
-	        for i in 0..4 {
-	            let idx = chunk_start + i;
-	            let base = if idx < input.len() {
-	                input[idx]
-	            } else {
-	                b'A' // pad with 'A' if out-of-bounds
-	            };
-	            value <<= 2;
-	            value |= self.encode_binary(base)?;
-	        }
-
-	        ret.push(value);
-	    }
-
-	    self.u8_encoded = ret;
-	    self.lost = 0;
-	    self.shifted = 0;
-	    Ok(())
-	}
-
-	pub fn regenerate_from_str(&mut self, input: &str) -> Result<(), String> {
-	    self.regenerate_from_slice(input.as_bytes())
-	}
-
-	/// simply get the the first 16 bp as u32
-	pub fn str_to_u32( &mut self, input:&str ) -> u32 {
-		self.regenerate_from_slice(input.as_bytes());
-		self.into_u32()
-	}
-
-	/// simply get the the first 32 bp as u64
-	pub fn str_to_u64( &mut self, input:&str ) -> u64 {
-		self.regenerate_from_slice(input.as_bytes());
-		self.into_u64()
-	}
-
-
-	/// regenerate the encoded from the storage
-	/// this can be used to re-gain lost sequences
-	pub fn regenerate (&mut self ) -> Result<(),String>{
-
-		let mut target = self.storage.len();
-		let remainder = target % 4;
-	    if remainder != 0{
-	    	target +=  4 - remainder;
-	    }
-
-		let mut ret = Vec::<u8>::with_capacity( target/4 );
-		let mut current_byte_id:usize;
-
-		for id in 0..(target/4) {
-		//for i in 0..array.len(){
-			//let val:u8=0;
-			ret.push(0_u8);
-			for add in (0..4).rev(){
-				ret[id] <<=2;
-				current_byte_id = id*4 + add;
-				if self.storage.len()> current_byte_id {
-					//println!("Trying to push to result {id} / {add} the entry {current_byte_id} ({})",self.storage[current_byte_id] );
-					ret[id] |= self.encode_binary(self.storage[current_byte_id])?;
-				}
-				else {
-					//println!("Pushing an A instead");
-					ret[id] |= self.encode_binary(b'A')?;
-				}
-			}
-		}
-
-		//self.u8_encoded = ret.iter().rev().copied().collect();
-		self.u8_encoded = ret;
-		self.lost = 0;
-		self.shifted = 0;
-		Ok(())
-	}
-
-	/// <unsigned_int>_to_str functions do exactly that.
-	/// they regenerate the initial utf8 encoded String from a IntToStr encoded integer.
-	/// u64_to_str - convert a IntToStr encoded u64 to utf8 Vec::<u8> with a length of up to 32bp
-	pub fn u64_to_string ( &self, kmer_size:usize, km:&u64) ->String {
-
-	    let array = km.to_le_bytes();
-	    let mut data: String = "".to_string();
-
-	    self.u8_array_to_str( kmer_size, &array, &mut data);
-	    data
-	}
-
-
-	/// <unsigned_int>_to_str functions do exactly that.
-	/// they regenerate the initial utf8 encoded String from a IntToStr encoded integer.
-	/// u64_to_str - convert a IntToStr encoded u64 to utf8 Vec::<u8> with a length of up to 32bp
-	pub fn u64_to_str ( &self, kmer_size:usize, km:&u64,  data:&mut String ){
-
-	    let array = km.to_le_bytes();
-
-	    self.u8_array_to_str( kmer_size, &array, data)
-	}
-	pub fn u16_to_str ( &self, kmer_size:usize, km:&u16,  data:&mut String ){
-
-	    let array = km.to_le_bytes();
-
-	    self.u8_array_to_str( kmer_size, &array, data)
-	}
-
 
 
 	/// Convert any integer value obtained from any of the self.into_u16.to_le_bytes() like functions
 	/// and adds them at the end of the mutable data string.
-	pub fn to_string (&self, bases:usize, data:&mut String ){
+	pub fn to_string (&self, bases:usize )->String{
 		let mut i = 0;
+		let mut data = String::default();
 	    
 		for u8_4bp in self.u8_encoded.iter(){
 			i += 4;
-			if i >= bases {
-				//eprintln!("decoding {} bits of this number: {:b}", bases +4 - i, u8_4bp);
-				self.u8_to_str( bases +4 - i, u8_4bp, data );
+			Self::u8_to_str(  u8_4bp, &mut data );
+			if i >= bases {				
 				break;
-			}else {
-				//println!("decoding 4 bits of this number: {:b}", u8_4bp);
-				self.u8_to_str( 4, u8_4bp,  data );
 			}
 		}
+		data.truncate(bases);
+		data
 	}
 
-	pub fn u8_to_str ( &self, kmer_size:usize, u8_rep:&u8,  data:&mut String ){
+	pub fn u8_to_str ( u8_rep:&u8,  data:&mut String ){
 
 		let mut loc:u8 = *u8_rep;
 		//println!("converting u8 {loc:b} to string with {kmer_size} bp.");
-		for _i in 0..kmer_size{
+		for _i in (0..4).rev(){
 			let ch = match loc & 0b11{
 	            0 => "A", //0b00
 	            1 => "C", // 0b01
@@ -621,21 +487,15 @@ impl IntToStr {
 		//println!("\nMakes sense? {:?}", data);
 	}
 
-	pub fn u8_array_to_str ( &self, kmer_size:usize, u8_rep:&[u8],  data:&mut String ){
+	pub fn u8_array_to_str ( u8_rep:&[u8] ) ->String{
 
 		let mut i = 0;
+		let mut data = "".to_string();
 
 		for u8_4bp in u8_rep {
-			i += 4;
-			if i >= kmer_size {
-				//println!("decoding {} bits of this number: {:b}", kmer_size - (i-4), u8_4bp);
-				self.u8_to_str( kmer_size +4 -i, u8_4bp, data );
-				break;
-			}else {
-				//println!("decoding 4 bits of this number: {:b}", u8_4bp);
-				self.u8_to_str( 4, u8_4bp,  data );
-			}
+			Self::u8_to_str( u8_4bp, &mut data );
 		}
+		data
 	}
 
 	/// This will mask the providied u64 with the internal mask definitivels 'killing' the last bp.
@@ -643,16 +503,18 @@ impl IntToStr {
 	pub fn mask_u64( &self, seq:&u64 ) ->u64{
 		//let filled_sed = seq | (!self.mask & (0b11 << (2 * self.kmer_size )));
 		//println!("I have the mask {:b}", self.mask);
-        seq & self.mask
+        //seq & self.mask
+        *seq
 	}
 
 	/// This will mask the last bp by 'A' or #b00 and only return bp length usabel info.
 	pub fn mask_u64_to ( &self, seq:&u64, bp:usize) -> u64  {
-		if bp >= 32{
+		*seq
+		/*if bp >= 32{
 			return *seq;
 		}
 		let mask = !0u64 >> ( (32 - bp )  * 2) as u32;
-		seq & mask
+		seq & mask*/
 	}
 
 
@@ -668,4 +530,110 @@ impl IntToStr {
 		println!("binary vecor length {}", self.len());
 	}
 
+}
+
+
+/*---- int_to_str::tests::test_uXx_roundtrip_aaaaaaacaaagaaat stdout ----
+==> Testing input: AAAAAAACAAAGAAAT
+Original encoded: [0, 1, 2, 3]
+Encoded u16:                   1000000000000000
+Encoded u32:   11000000 01000000 10000000 00000000
+Encoded u64:   11000000 01000000 10000000 00000000
+Encoded u128:  11000000 01000000 10000000 00000000
+Decoded u16:   00000000 00000001
+Decoded u32:   00000000 00000001 00000010 00000011
+Decoded u64:   00000000 00000001 00000010 00000011, 00000000, 00000000, 00000000, 00000000
+Decoded u128:  00000000 00000001 00000010 00000011, 00000000, 00000000, 00000000, 00000000, 00000000, 00000000, 00000000, 00000000, 00000000, 00000000, 00000000, 00000000
+*/
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::IntToStr;
+
+
+
+	fn format_bytes_binary(bytes: &[u8]) -> String {
+	    bytes.iter()
+	        .map(|b| format!("{:08b}", b))
+	        .collect::<Vec<_>>()
+	        .join(", ")
+	}
+	fn roundtrip_test(input: &str) {
+	    
+	    let used_str = if input.len() < 64 {
+	    	let padding = "A".repeat(64 - input.len());
+        	format!("{input}{padding}")
+	    }else {
+	    	input.to_string()
+	    };
+		println!("==> Testing input: {used_str}");
+	    let encoder = IntToStr::new(used_str.as_bytes());
+	    let original = encoder.u8_encoded.clone();
+	    println!("Original encoded: {:?}", original);
+
+	    // Encode
+	    let val16 = encoder.into_u16();
+	    let val32 = encoder.into_u32();
+	    let val64 = encoder.into_u64();
+	    let val128 = encoder.into_u128();
+
+	    println!("Encoded u16:   {:b}", val16);
+	    println!("Encoded u32:   {:b}", val32);
+	    println!("Encoded u64:   {:b}", val64);
+	    println!("Encoded u128:  {:b}", val128);
+
+	    //panic!("Will die anyhow");
+	    // Decode
+	    let decoded16 = IntToStr::from_u16(val16);
+	    let decoded32 = IntToStr::from_u32(val32);
+	    let decoded64 = IntToStr::from_u64(val64);
+	    let decoded128 = IntToStr::from_u128(val128);
+
+	    println!("Decoded u16:   {}", format_bytes_binary(&decoded16.u8_encoded));
+	    println!("Decoded u32:   {}", format_bytes_binary(&decoded32.u8_encoded));
+	    println!("Decoded u64:   {}", format_bytes_binary(&decoded64.u8_encoded));
+	    println!("Decoded u128:  {}", format_bytes_binary(&decoded128.u8_encoded));
+
+	    // Assertions
+	    assert_eq!(&original[..2], &decoded16.u8_encoded[..2], "u16 mismatch");
+	    assert_eq!(&original[..4], &decoded32.u8_encoded[..4], "u32 mismatch");
+	    assert_eq!(&original[..8], &decoded64.u8_encoded[..8], "u64 mismatch");
+	    assert_eq!(&original[..16], &decoded128.u8_encoded[..16], "u128 mismatch");
+
+	    //assert_eq!(&encoder.storage[..8], &decoded16.storage[..8], "u16 mismatch");
+	    //assert_eq!(&encoder.storage[..16], &decoded32.storage[..16], "u32 mismatch");
+	    //assert_eq!(&encoder.storage[..32], &decoded64.storage[..32], "u64 mismatch");
+	    assert_eq!( &decoded128.to_string( input.len() ), input );
+
+	}
+	#[test]
+	fn test_encoding(){
+		let encoder = IntToStr::new(b"ACGTTC");
+		assert_eq!( encoder.into_u16(), 0b011111100100, "encoded {:b} is not the expected {:b}",
+		 encoder.into_u16(), 0b011111100100 );
+		assert_eq!( &encoder.to_string( 5 ), "ACGTT" );
+		//this will only overreach by max 3 bp of A's (0)
+		assert_eq!( &encoder.to_string( 15 ), "ACGTTCAA" );
+	}
+
+	#[test]
+	fn test_from_uint(){
+		// the from_uint function is the 'mother' of all fromn16 to from_u128.
+		// So testing one should also test all others.
+		let encoder = IntToStr::from_u16( 0b1111100100 as u16 );
+		let exp = IntToStr::new(b"ACGTT");
+		assert_eq!( encoder.u8_encoded, exp.u8_encoded );
+	}
+
+    #[test]
+    fn test_uXx_roundtrip_aaaaaaacaaagaaat() {
+        roundtrip_test("AAAAAAACAAAGAAAT");
+    }
+
+    #[test]
+    fn test_uXx_roundtrip_aaaaaacaagaataaa() {
+        roundtrip_test("AAAAAACAAGAATAAA");
+    }
 }
