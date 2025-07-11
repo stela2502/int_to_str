@@ -114,47 +114,35 @@ impl PartialEq<Vec<u8>> for IntToStr {
     }
 }
 
-/*
+
+/// This iterates over the bytes of the u8_encoded and therfore returns a u16, u64 pair at every 4 bp.
+/// If you wnat more you need to create slices of this object first.
 impl Iterator for IntToStr {
     type Item = (u16, u64);
 
     fn next(&mut self) -> Option<Self::Item> {
 
-        let result = self.seq_at_position(self.current_position);
-
-        if let Some((cell_id, second_seq)) = result {
-            // Advance to the next position
-            self.current_position += 8;
-            Some((cell_id, second_seq))
-        } else {
-            // If the shift is 7, stop the iteration - we reached the end
-            if (self.current_position % 8) + self.step_size >= 8  {
-                return None
-            }
-            // Otherwise, move to the next position
-            self.current_position = (self.current_position % 8) + self.step_size;
-
-            // Get the result at the updated position
-            let result = self.seq_at_position(self.current_position);
-
-	        if let Some((cell_id, second_seq)) = result {
-	            // Advance to the next position
-	            self.current_position += 8;
-	            Some((cell_id, second_seq))
-	        } else {
-	        	// reset the iterator for the next use
-	        	self.current_position = 0;
-	            None
-	        }
-        }
+    	if self.size < (self.current_position +4) *4{
+    		None
+    	}else {
+    		let start = self.current_position;
+    		let max = self.current_position + 10;
+    		self.current_position +=1;
+    		Some( (
+				Self::into_uint::<u16,2>(&self.u8_encoded[start..max] , false), 
+				Self::into_uint::<u64,2>(&self.u8_encoded[(start+2)..max], false )
+				)
+			)
+    	}
     }
 }
-*/
+
 /// Here I have my accessorie functions that more or less any of the classes would have use of.
 /// I possibly learn a better way to have them...
 impl IntToStr {
 
-	pub fn new(seq: &[u8] ) -> Self {
+	pub fn new<T: AsRef<[u8]>>(input: T) -> Self {
+		let seq = input.as_ref();
 		// 4 of the array u8 fit into one result u8
 		//eprintln!("Somtimes I die?! -> processed seq: {:?}", seq);
 		fn encode_binary( c: u8) -> Result<Base, String> {
@@ -312,9 +300,9 @@ impl IntToStr {
 	    Self::from_uint::<u128, 16>(val, false)
 	}
 
-	pub fn seq_at_position(&self, position:usize ) -> Result<(u16, u64 ), String>{
+	pub fn ints_at_position(&self, position:usize ) -> Result<(u16, u64 ), String>{
 		if position %4 != 0 {
-			return Err("get yourself a shifted IntToSeq using new instead!".to_string())
+			return Err("get yourself a sliced IntToSeq!".to_string())
 		}
 		let start = position/4;
 		if start +3 <  self.len() {
@@ -325,6 +313,18 @@ impl IntToStr {
 			Self::into_uint::<u16,2>(&self.u8_encoded[start..max] , false), 
 			Self::into_uint::<u64,2>(&self.u8_encoded[(start+2)..max], false ),
 		))
+	}
+
+	/// get a new IntToSeq objects from start..end of the DNA sequence.
+	pub fn slice(&self, start:Option<usize>, end:Option<usize> ) -> Self{
+		let start:usize = start.unwrap_or( 0 );
+		let end:usize = end.unwrap_or(self.size);
+
+		let u8_enc = &self.u8_encoded[ (start/4)..(end+3/4) ];
+		let seq = Self::u8_array_to_str( u8_enc );
+		let shift = start % 4;
+
+		Self::new( &seq.as_bytes()[start..end] )
 	}
 
 	/// Convert any integer value obtained from any of the self.into_u16.to_le_bytes() like functions
@@ -378,19 +378,6 @@ impl IntToStr {
 
 }
 
-
-/*---- int_to_str::tests::test_uXx_roundtrip_aaaaaaacaaagaaat stdout ----
-==> Testing input: AAAAAAACAAAGAAAT
-Original encoded: [0, 1, 2, 3]
-Encoded u16:                   1000000000000000
-Encoded u32:   11000000 01000000 10000000 00000000
-Encoded u64:   11000000 01000000 10000000 00000000
-Encoded u128:  11000000 01000000 10000000 00000000
-Decoded u16:   00000000 00000001
-Decoded u32:   00000000 00000001 00000010 00000011
-Decoded u64:   00000000 00000001 00000010 00000011, 00000000, 00000000, 00000000, 00000000
-Decoded u128:  00000000 00000001 00000010 00000011, 00000000, 00000000, 00000000, 00000000, 00000000, 00000000, 00000000, 00000000, 00000000, 00000000, 00000000, 00000000
-*/
 
 
 #[cfg(test)]
