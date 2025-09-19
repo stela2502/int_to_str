@@ -1,3 +1,4 @@
+[![Rust](https://github.com/stela2502/int_to_str/actions/workflows/rust.yml/badge.svg)](https://github.com/stela2502/int_to_str/actions/workflows/rust.yml)
 [![Rust](https://github.com/stela2502/int_to_str/actions/workflows/rust.yml/badge.svg?branch=main)](https://github.com/stela2502/int_to_str/actions/workflows/rust.yml)
 
 # int_to_str is a Rust DNA to 2bit encoding tool
