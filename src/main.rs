@@ -1,5 +1,5 @@
 use std::env;
-use int_to_str::int_to_str::IntToStr;
+use stela_int_to_str::int_to_str::IntToStr;
 
 
 fn main() {
