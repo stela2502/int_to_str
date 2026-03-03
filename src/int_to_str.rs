@@ -322,7 +322,7 @@ impl IntToStr {
 
 		let u8_enc = &self.u8_encoded[ (start/4)..(end+3/4) ];
 		let seq = Self::u8_array_to_str( u8_enc );
-		let shift = start % 4;
+		//let shift = start % 4;
 
 		Self::new( &seq.as_bytes()[start..end] )
 	}
