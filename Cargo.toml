@@ -3,6 +3,16 @@ name = "int_to_str"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Fast integer to string conversion utilities optimized for high-throughput data processing."
+license = "MIT"
+repository = "https://github.com/stela2502/int_to_str"
+homepage = "https://github.com/stela2502/int_to_str"
+documentation = "https://docs.rs/int_to_str"
+readme = "README.md"
+
+keywords = ["integer", "conversion", "performance", "bioinformatics"]
+categories = ["algorithms"]
+
+authors = ["Stefan Lang"]
 
 [dependencies]
