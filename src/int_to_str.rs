@@ -141,6 +141,7 @@ impl Iterator for IntToStr {
 /// I possibly learn a better way to have them...
 impl IntToStr {
 
+	/// new takes a string DNA representation and parses it into an internal 2bit format
 	pub fn new<T: AsRef<[u8]>>(input: T) -> Self {
 		let seq = input.as_ref();
 		// 4 of the array u8 fit into one result u8
