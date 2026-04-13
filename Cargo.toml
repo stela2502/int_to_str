@@ -1,6 +1,6 @@
 [package]
 name = "stela-int-to-str"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 description = "Fast integer to string conversion utilities optimized for high-throughput data processing."
@@ -16,3 +16,8 @@ categories = ["algorithms"]
 authors = ["Stefan Lang"]
 
 [dependencies]
+
+
+[features]
+default = []
+alignment = []

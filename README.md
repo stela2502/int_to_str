@@ -1,54 +1,184 @@
 [![Rust](https://github.com/stela2502/int_to_str/actions/workflows/rust.yml/badge.svg)](https://github.com/stela2502/int_to_str/actions/workflows/rust.yml)
 [![Rust](https://github.com/stela2502/int_to_str/actions/workflows/rust.yml/badge.svg?branch=main)](https://github.com/stela2502/int_to_str/actions/workflows/rust.yml)
 
-# int_to_str is a Rust DNA to 2bit encoding tool
+# int_to_str (v0.2.0)
 
-It is able to en- and de-code DNA as 2bit integer. It's implementation is likely crappy without end, but it seams to be working fine.
+A lightweight Rust library for encoding DNA sequences into compact 2-bit representations.
 
-# Usage
+This crate allows efficient conversion between DNA strings and integer-based representations (`u16`, `u32`, `u64`, `u128`), while also supporting slicing and low-level sequence manipulation.
 
+> ⚠️ The implementation prioritizes performance and compactness. It is designed for practical use in bioinformatics workflows rather than being a fully polished general-purpose library.
 
-Add this to yout Cargo.toml
-```
+---
+
+# Installation
+
+Add this to your `Cargo.toml`:
+
+```toml
 [dependencies]
-int_to_str = { git="https://github.com/stela2502/int_to_str.git"}
+int_to_str = { git = "https://github.com/stela2502/int_to_str.git", version = "0.2.0" }
 ```
 
-In your code you can encode a DNA string as 2bit using
+---
 
-```
+# Basic Usage
 
+Encode a DNA sequence into the internal 2-bit representation:
+
+```rust
 use int_to_str::int_to_str::IntToStr;
 
-let tool = IntToStr::new(b"ATGACTCTCAGCATGGAAGGACAGCAGAGACCAAGAGATCCTCCCACAGGGACACTACCTCTGGGCCTGGGATAC");
+let tool = IntToStr::new(
+    b"ATGACTCTCAGCATGGAAGGACAGCAGAGACCAAGAGATCCTCCCACAGGGACACTACCTCTGGGCCTGGGATAC"
+);
 ```
 
-You can convert data to any uint integer starting from the first bp or you can get a slice of the sequence (as IntToSeq) using the slice( start:usize, end:usize) function.
+You can:
 
-# Binary
+* Convert to integers (`u16`, `u32`, `u64`, `u128`)
+* Slice sequences efficiently
+* Convert back to string representation
 
-The library also codes for a small binary:
+---
 
+# Binary Usage
+
+The crate includes a small CLI tool:
+
+```bash
+int_to_str <sequence or integer>
 ```
-int_to_str 
-Usage: target/release/int_to_str <sequence or integer>
-```
 
-It either converts an integer (max u128) to DNS seq like this
+### Integer → DNA
 
-```
+```bash
 int_to_str 12343
 Integer input: 12343
 → Sequence: TCTAAATAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 ```
 
-or converts a sequence to an integer (u128):
-```
+### DNA → Integer
 
+```bash
 int_to_str TCTAAAT
 Sequence input: TCTAAAT
 → Sequence: 12343
-
 ```
 
-You see you need to manually make sure you only use the significant bits of your int as DNA seq - the binary does not help you there ;-)
+⚠️ Only the **significant bits** correspond to real DNA.
+The binary does not track sequence length for you, so trailing `A`s (00) may appear.
+
+---
+
+# Optional Feature: Alignment (v0.2.0)
+
+Version **0.2.0** introduces an optional `alignment` feature that adds sequence comparison utilities directly on top of the `IntToStr` representation.
+
+## Enable the feature
+
+```toml
+[dependencies]
+int_to_str = { git = "https://github.com/stela2502/int_to_str.git", version = "0.2.0", features = ["alignment"] }
+```
+
+or:
+
+```bash
+cargo build --features alignment
+```
+
+---
+
+## What it adds
+
+When enabled, the following capabilities become available:
+
+### Exact overlap detection
+
+* `best_exact_overlap(...)`
+* `exact_overlap_with_offset(...)`
+
+Finds the best positional overlap between two sequences, including:
+
+* overlap length
+* mismatch count
+* relative offset
+
+---
+
+### Mismatch-aware comparison
+
+* `overlap_mismatches(...)`
+
+Allows fast and deterministic comparison of overlapping regions without full alignment.
+
+---
+
+### Needleman–Wunsch alignment
+
+* `needleman_wunsch(...)`
+* `needleman_wunsch_distance(...)`
+
+Provides global alignment and a normalized distance metric suitable for:
+
+* validating overlaps
+* rescuing near-matching sequences
+* comparing short DNA fragments
+
+---
+
+## Example
+
+```rust
+use int_to_str::IntToStr;
+
+let a = IntToStr::new(b"AAGCAGTGGTATCAACGC");
+let b = IntToStr::new(b"TGGTATCAACGCAGAGTAA");
+
+// Exact overlap detection
+if let Some(hit) = a.best_exact_overlap(&b, 10, 0.0) {
+    println!("Overlap: {:?}", hit);
+}
+
+// Alignment-based similarity
+let dist = a.needleman_wunsch_distance(&b);
+println!("Distance: {}", dist);
+```
+
+---
+
+## When to use this feature
+
+Enable `alignment` if you need:
+
+* robust overlap detection (e.g. primer reconstruction)
+* mismatch-aware sequence comparison
+* alignment-based validation of sequence relationships
+
+You likely **do not need it** if you only use:
+
+* encoding / decoding
+* integer conversion
+* slicing operations
+
+---
+
+## Design Notes
+
+* The alignment functionality is **feature-gated** to keep the core crate lightweight.
+* All operations work directly on the **2-bit encoded representation** (no string conversion overhead).
+* Optimized for **short sequences (≤32 bp)**, making it ideal for:
+
+  * primers
+  * k-mers
+  * short-read analysis
+
+---
+
+# Final Notes
+
+This crate is intentionally minimal and pragmatic.
+If you need full-scale bioinformatics tooling, you should likely combine it with other libraries.
+
+If you need **fast, compact DNA handling with optional alignment support**, this crate is exactly that.
