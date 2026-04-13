@@ -1,10 +1,10 @@
 pub mod int_to_str;
 
 #[cfg(feature = "alignment")]
-pub mod alignement;
+pub mod alignment;
 
 #[allow(unused_imports)]
-pub use int_to_str::IntToStr as IntToStr;
+pub use int_to_str::IntToStr;
 
 #[cfg(feature = "alignment")]
-pub use alignement::{AlignmentConfig, AlignmentResult, ExactOverlap};
+pub use alignment::{AlignmentConfig, AlignmentResult, ExactOverlap};

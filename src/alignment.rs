@@ -134,7 +134,11 @@ impl IntToStr {
         }
 
         let self_start = ov_start as usize;
-        let other_start = if offset < 0 { (-offset) as usize } else { 0usize };
+        let other_start = if offset < 0 {
+            (-offset) as usize
+        } else {
+            0usize
+        };
 
         let mismatches = self.overlap_mismatches(self_start, other, other_start, overlap)?;
         let frac = mismatches as f32 / overlap as f32;
@@ -205,11 +209,7 @@ impl IntToStr {
         self.needleman_wunsch(other).normalized_distance
     }
 
-    pub fn needleman_wunsch_with(
-        &self,
-        other: &Self,
-        cfg: AlignmentConfig,
-    ) -> AlignmentResult {
+    pub fn needleman_wunsch_with(&self, other: &Self, cfg: AlignmentConfig) -> AlignmentResult {
         let rows = self.size + 1;
         let cols = other.size + 1;
 
@@ -244,8 +244,12 @@ impl IntToStr {
                 let a = self.base_code_at(i - 1).unwrap();
                 let b = other.base_code_at(j - 1).unwrap();
 
-                let diag =
-                    dp[i - 1][j - 1] + if a == b { cfg.match_score } else { cfg.mismatch_score };
+                let diag = dp[i - 1][j - 1]
+                    + if a == b {
+                        cfg.match_score
+                    } else {
+                        cfg.mismatch_score
+                    };
                 let up = dp[i - 1][j] + cfg.gap_penalty;
                 let left = dp[i][j - 1] + cfg.gap_penalty;
 
@@ -340,7 +344,6 @@ impl IntToStr {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::IntToStr;
 
     #[test]
