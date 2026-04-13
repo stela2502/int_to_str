@@ -75,7 +75,7 @@ impl fmt::Display for IntToStr {
         }
 
         // Helper: format u8 vector as binary
-        fn vec_to_bin(vec: &Vec<u8>) -> Vec<String> {
+        fn vec_to_bin(vec: &[u8]) -> Vec<String> {
             vec.iter()
                 .map(|b| format!("0b{}", to_bin_grouped(*b, 8)))
                 .collect()
@@ -158,7 +158,7 @@ impl IntToStr {
 	    	}
 		}
 
-		let num_bytes =(seq.len()+3)/4;
+		let num_bytes =seq.len().div_ceil(4);
 		let mut u8_encoded = Vec::<u8>::with_capacity( num_bytes );
 		for id in 0..num_bytes {
 			u8_encoded.push( 0_u8 );
@@ -199,7 +199,7 @@ impl IntToStr {
 	
 	fn reverse_bits_in_byte( b: u8) -> u8 {
 		let mut b = b;
-	    b = (b >> 4) | (b << 4);
+	    b = b.rotate_left(4);
 	    b = ((b & 0b1100_1100) >> 2) | ((b & 0b0011_0011) << 2);
 	    b = ((b & 0b1010_1010) >> 1) | ((b & 0b0101_0101) << 1);
 	    b
@@ -301,7 +301,7 @@ impl IntToStr {
 	}
 
 	pub fn ints_at_position(&self, position:usize ) -> Result<(u16, u64 ), String>{
-		if position %4 != 0 {
+		if !position.is_multiple_of(4) {
 			return Err("get yourself a sliced IntToSeq!".to_string())
 		}
 		let start = position/4;
@@ -320,7 +320,7 @@ impl IntToStr {
 		let start:usize = start.unwrap_or( 0 );
 		let end:usize = end.unwrap_or(self.size);
 
-		let u8_enc = &self.u8_encoded[ (start/4)..(end+3/4) ];
+		let u8_enc = &self.u8_encoded[ (start/4)..end ];
 		let seq = Self::u8_array_to_str( u8_enc );
 		//let shift = start % 4;
 
@@ -331,7 +331,7 @@ impl IntToStr {
 	/// and adds them at the end of the mutable data string.
 	pub fn to_string (&self, bases:usize )->String{
 
-		let num_bytes =((bases+3)/4).min(self.u8_encoded.len() );
+		let num_bytes =bases.div_ceil(4).min(self.u8_encoded.len() );
 		let mut data = Self::u8_array_to_str( &self.u8_encoded[0..num_bytes] );
 		data.truncate(bases);
 		data
