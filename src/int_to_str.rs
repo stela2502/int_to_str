@@ -10,7 +10,7 @@ pub const C: Base = 1;
 pub const G: Base = 2;
 pub const T: Base = 3;
 
-#[derive(Default, Debug, PartialEq)]
+#[derive(Default, Debug, PartialEq, Clone)]
 pub struct IntToStr {
     pub u8_encoded: Vec<u8>, // the 2bit encoded array (4 times compressed)
     pub lost: usize,         // how many times have I lost 4bp?
