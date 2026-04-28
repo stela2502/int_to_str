@@ -92,6 +92,7 @@ impl fmt::Display for IntToStr {
         writeln!(f, "  current_position: {}", self.current_position)?;
         write!(f, "}}")
     }
+
 }
 
 // Implement the Index trait for MyClass
@@ -138,18 +139,7 @@ impl IntToStr {
         let seq = input.as_ref();
         // 4 of the array u8 fit into one result u8
         //eprintln!("Somtimes I die?! -> processed seq: {:?}", seq);
-        fn encode_binary(c: u8) -> Result<Base, String> {
-            // might have to play some tricks for lookup in a const
-            // array at some point
-            match c {
-                b'A' | b'a' => Ok(A),
-                b'C' | b'c' => Ok(C),
-                b'G' | b'g' => Ok(G),
-                b'T' | b't' => Ok(T),
-                b'N' | b'n' => Ok(A), // this is necessary as we can not even load a N containing sequence
-                _ => Err("cannot encode {c} into 2 bit encoding".to_string()),
-            }
-        }
+        
 
         let num_bytes = seq.len().div_ceil(4);
         let mut u8_encoded = Vec::<u8>::with_capacity(num_bytes);
@@ -159,7 +149,7 @@ impl IntToStr {
                 let current_utf8_id = id * 4 + add;
                 u8_encoded[id] <<= 2;
                 if seq.len() > current_utf8_id {
-                    u8_encoded[id] |= match encode_binary(seq[current_utf8_id]){
+                    u8_encoded[id] |= match Self::encode_binary(seq[current_utf8_id]){
 						Ok(bits) => bits,
 						Err(e) => panic!("Char at seq[{current_utf8_id}] ({}) is not a supported nucleotoide\n{e:?}",seq[current_utf8_id] )
 					};
@@ -180,6 +170,43 @@ impl IntToStr {
             current_position: 0,
             step_size: 1,
         }
+    }
+
+    pub fn encode_binary(c: u8) -> Result<Base, String> {
+        // might have to play some tricks for lookup in a const
+        // array at some point
+        match c {
+            b'A' | b'a' => Ok(A),
+            b'C' | b'c' => Ok(C),
+            b'G' | b'g' => Ok(G),
+            b'T' | b't' => Ok(T),
+            b'N' | b'n' => Ok(A), // this is necessary as we can not even load a N containing sequence
+            _ => Err("cannot encode {c} into 2 bit encoding".to_string()),
+        }
+    }
+
+    /// Encode a DNA string (ACGTN) into a compact u64 using 2-bit encoding.
+    ///
+    /// A=0, C=1, G=2, T=3, N→A (0)
+    ///
+    /// # Limits
+    /// Maximum length is 32 bases (64 bits).
+    pub fn str_to_u64(seq: &str) -> Result<u64, String> {
+        if seq.len() > 32 {
+            return Err(format!(
+                "sequence too long for u64 encoding: {} > 32",
+                seq.len()
+            ));
+        }
+
+        let mut value = 0u64;
+
+        for &b in seq.as_bytes() {
+            let base = Self::encode_binary(b)?;
+            value = (value << 2) | (base as u64);
+        }
+
+        Ok(value)
     }
 
     pub fn is_empty(&self) -> bool {
