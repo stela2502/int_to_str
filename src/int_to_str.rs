@@ -140,37 +140,44 @@ impl IntToStr {
         // 4 of the array u8 fit into one result u8
         //eprintln!("Somtimes I die?! -> processed seq: {:?}", seq);
         
-
-        let num_bytes = seq.len().div_ceil(4);
-        let mut u8_encoded = Vec::<u8>::with_capacity(num_bytes);
-        for id in 0..num_bytes {
-            u8_encoded.push(0_u8);
-            for add in (0..4).rev() {
-                let current_utf8_id = id * 4 + add;
-                u8_encoded[id] <<= 2;
-                if seq.len() > current_utf8_id {
-                    u8_encoded[id] |= match Self::encode_binary(seq[current_utf8_id]){
-						Ok(bits) => bits,
-						Err(e) => panic!("Char at seq[{current_utf8_id}] ({}) is not a supported nucleotoide\n{e:?}",seq[current_utf8_id] )
-					};
-                } // this automatically "stuffs" the last byte with zeros's
-            }
-        }
-        let lost = 0;
-        let checker = BTreeMap::<u8, usize>::new();
-        //let mask: u64 = (1 << (2 * kmer_size)) - 1;
+        let u8_encoded = Self::enc_bytes(seq)
+        .unwrap_or_else(|e| panic!("failed to encode sequence: {e}"));
 
         Self {
             u8_encoded,
-            lost,
+            lost: 0,
             size: seq.len(),
             kmer_size: 16, //deprecated
-            checker,
+            checker: BTreeMap::<u8, usize>::new(),
             mask: 0, // useless
             current_position: 0,
             step_size: 1,
         }
     }
+
+    pub fn enc_bytes(seq: &[u8]) -> Result<Vec<u8>, String> {
+        let num_bytes = seq.len().div_ceil(4);
+        let mut u8_encoded = Vec::<u8>::with_capacity(num_bytes);
+
+        for id in 0..num_bytes {
+            let mut packed = 0_u8;
+
+            for add in (0..4).rev() {
+                let current_utf8_id = id * 4 + add;
+                packed <<= 2;
+
+                if seq.len() > current_utf8_id {
+                    let bits = Self::encode_binary(seq[current_utf8_id])?;
+                    packed |= bits;
+                }
+            }
+
+            u8_encoded.push(packed);
+        }
+
+        Ok(u8_encoded)
+    }
+
 
     pub fn encode_binary(c: u8) -> Result<Base, String> {
         // might have to play some tricks for lookup in a const
